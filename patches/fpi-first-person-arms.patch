@@ -1,8 +1,8 @@
 diff --git a/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp b/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
-index 3b9148e..3967718 100644
+index 3b9148e..88c8424 100644
 --- a/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
 +++ b/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
-@@ -21,6 +21,28 @@ namespace ImprovedCamera {
+@@ -21,6 +21,65 @@ namespace ImprovedCamera {
  
  	using namespace Address::Variable;
  
@@ -10,20 +10,57 @@ index 3b9148e..3967718 100644
 +	// Its behavior sets the graph variable bOffsetGPMA for as long as such an animation is active.
 +	// While that is the case the first person arms must be shown (and the third person arms hidden),
 +	// otherwise Improved Camera shows the third person arms whenever no weapon is drawn and the animation is invisible.
++	// The variable is read from the player and from both animation graphs (third and first person).
++	// Every change of the state is written to the log, to see what the behavior really does.
 +	static bool IsFirstPersonInteractionActive()
 +	{
-+		static bool s_lastState = false;
++		static std::uint64_t s_lastKey = ~0ULL;
 +
 +		auto player = RE::PlayerCharacter::GetSingleton();
-+		bool active = false;
++		if (!player)
++			return false;
 +
-+		if (!player || !player->GetGraphVariableBool("bOffsetGPMA", active))
-+			active = false;
++		bool holderVal = false;
++		const bool holderOk = player->GetGraphVariableBool("bOffsetGPMA", holderVal);
 +
-+		if (active != s_lastState)
++		bool graphVal[2] = { false, false };
++		bool graphOk[2] = { false, false };
++		std::uint32_t graphCount = 0;
++
++		RE::BSAnimationGraphManagerPtr graphMgr;
++		if (player->GetAnimationGraphManager(graphMgr) && graphMgr)
 +		{
-+			s_lastState = active;
-+			LOG_INFO("FirstPersonInteractions: first person arm animation {}", active ? "started" : "ended");
++			graphCount = static_cast<std::uint32_t>(graphMgr->graphs.size());
++			for (std::uint32_t i = 0; i < 2 && i < graphCount; i++)
++			{
++				auto& graph = graphMgr->graphs[i];
++				if (graph)
++					graphOk[i] = graph->GetGraphVariableBool("bOffsetGPMA", graphVal[i]);
++			}
++		}
++
++		std::int32_t firstPerson = -1;
++		std::int32_t offsetType = -1;
++		std::int32_t animationType = -1;
++		player->GetGraphVariableInt("i1stPerson", firstPerson);
++		player->GetGraphVariableInt("iGPMAOffsetType", offsetType);
++		player->GetGraphVariableInt("iGPMAAnimationType", animationType);
++
++		const bool clipIsGPMA = Events::Observer::Get()->IsCurrentAnimation("GPMAOffsetAnimation");
++
++		const bool active = (holderOk && holderVal) || (graphOk[0] && graphVal[0]) || (graphOk[1] && graphVal[1]);
++
++		const std::uint64_t key = (holderOk ? 1ULL : 0ULL) | (holderVal ? 2ULL : 0ULL) | (graphOk[0] ? 4ULL : 0ULL) | (graphVal[0] ? 8ULL : 0ULL) |
++			(graphOk[1] ? 16ULL : 0ULL) | (graphVal[1] ? 32ULL : 0ULL) | (clipIsGPMA ? 64ULL : 0ULL) |
++			(static_cast<std::uint64_t>(firstPerson + 1) & 0xFF) << 8 | (static_cast<std::uint64_t>(offsetType + 1) & 0xFF) << 16 |
++			(static_cast<std::uint64_t>(animationType + 1) & 0xFF) << 24 | static_cast<std::uint64_t>(graphCount & 0xF) << 32;
++
++		if (key != s_lastKey)
++		{
++			s_lastKey = key;
++			LOG_INFO("FPI state: bOffsetGPMA player={}/{} thirdPersonGraph={}/{} firstPersonGraph={}/{} (graphs: {}) | i1stPerson={} iGPMAOffsetType={} iGPMAAnimationType={} | clip GPMAOffsetAnimation: {} | arms fix active: {}",
++				holderOk ? 1 : 0, holderVal ? 1 : 0, graphOk[0] ? 1 : 0, graphVal[0] ? 1 : 0, graphOk[1] ? 1 : 0, graphVal[1] ? 1 : 0, graphCount, firstPerson, offsetType,
++				animationType, clipIsGPMA ? 1 : 0, active ? 1 : 0);
 +		}
 +		return active;
 +	}
@@ -31,7 +68,7 @@ index 3b9148e..3967718 100644
  	ImprovedCameraSE::ImprovedCameraSE()
  	{
  		m_pluginConfig = DLLMain::Plugin::Get()->Config();
-@@ -806,6 +828,9 @@ namespace ImprovedCamera {
+@@ -806,6 +865,9 @@ namespace ImprovedCamera {
  	////////////////////////////////////////////////////////////////
  	bool ImprovedCameraSE::UseThirdPersonArms()
  	{
@@ -41,7 +78,7 @@ index 3b9148e..3967718 100644
  		using namespace Address::Function;
  
  		auto player = RE::PlayerCharacter::GetSingleton();
-@@ -848,6 +873,9 @@ namespace ImprovedCamera {
+@@ -848,6 +910,9 @@ namespace ImprovedCamera {
  
  	bool ImprovedCameraSE::UseThirdPersonLeftArm()
  	{
@@ -51,7 +88,7 @@ index 3b9148e..3967718 100644
  		using namespace Address::Function;
  
  		auto player = RE::PlayerCharacter::GetSingleton();
-@@ -900,6 +928,9 @@ namespace ImprovedCamera {
+@@ -900,6 +965,9 @@ namespace ImprovedCamera {
  
  	bool ImprovedCameraSE::UseThirdPersonRightArm()
  	{
