@@ -1,0 +1,63 @@
+diff --git a/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp b/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
+index 3b9148e..3967718 100644
+--- a/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
++++ b/ImprovedCamera/source/skyrimse/ImprovedCameraSE.cpp
+@@ -21,6 +21,28 @@ namespace ImprovedCamera {
+ 
+ 	using namespace Address::Variable;
+ 
++	// First Person Interactions (by GiraPomba) plays its interaction animations on the first person arms.
++	// Its behavior sets the graph variable bOffsetGPMA for as long as such an animation is active.
++	// While that is the case the first person arms must be shown (and the third person arms hidden),
++	// otherwise Improved Camera shows the third person arms whenever no weapon is drawn and the animation is invisible.
++	static bool IsFirstPersonInteractionActive()
++	{
++		static bool s_lastState = false;
++
++		auto player = RE::PlayerCharacter::GetSingleton();
++		bool active = false;
++
++		if (!player || !player->GetGraphVariableBool("bOffsetGPMA", active))
++			active = false;
++
++		if (active != s_lastState)
++		{
++			s_lastState = active;
++			LOG_INFO("FirstPersonInteractions: first person arm animation {}", active ? "started" : "ended");
++		}
++		return active;
++	}
++
+ 	ImprovedCameraSE::ImprovedCameraSE()
+ 	{
+ 		m_pluginConfig = DLLMain::Plugin::Get()->Config();
+@@ -806,6 +828,9 @@ namespace ImprovedCamera {
+ 	////////////////////////////////////////////////////////////////
+ 	bool ImprovedCameraSE::UseThirdPersonArms()
+ 	{
++		if (IsFirstPersonInteractionActive())
++			return false;
++
+ 		using namespace Address::Function;
+ 
+ 		auto player = RE::PlayerCharacter::GetSingleton();
+@@ -848,6 +873,9 @@ namespace ImprovedCamera {
+ 
+ 	bool ImprovedCameraSE::UseThirdPersonLeftArm()
+ 	{
++		if (IsFirstPersonInteractionActive())
++			return false;
++
+ 		using namespace Address::Function;
+ 
+ 		auto player = RE::PlayerCharacter::GetSingleton();
+@@ -900,6 +928,9 @@ namespace ImprovedCamera {
+ 
+ 	bool ImprovedCameraSE::UseThirdPersonRightArm()
+ 	{
++		if (IsFirstPersonInteractionActive())
++			return false;
++
+ 		using namespace Address::Function;
+ 
+ 		auto player = RE::PlayerCharacter::GetSingleton();
