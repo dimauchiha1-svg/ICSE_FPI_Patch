@@ -1,0 +1,52 @@
+name: Build Improved Camera SE with the First Person Interactions fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Check out this repository (the patch)
+        uses: actions/checkout@v4
+        with:
+          path: patch
+
+      - name: Check out Improved Camera SE NG at the commit the patch was made for
+        shell: bash
+        run: |
+          git clone https://github.com/ArranzCNL/ImprovedCameraSE-NG.git src
+          cd src
+          git checkout 2e441c190e46d96eefb7738a3276308e9c36e939
+          git submodule update --init --recursive
+
+      - name: Apply the patch
+        shell: bash
+        run: |
+          cd src
+          git apply --verbose ../patch/patches/fpi-first-person-arms.patch
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build (Release, x64)
+        shell: cmd
+        run: msbuild src\build\VC17\ImprovedCameraSE_VS2022.sln /p:Configuration=Release /p:Platform=x64 /m /nologo /verbosity:minimal
+
+      - name: Collect the files in the layout of the mod
+        shell: bash
+        run: |
+          out=package/SKSE/Plugins
+          mkdir -p "$out"
+          bin=src/build/VC17/.bin/x64-Release/ImprovedCameraSE
+          ls -R src/build/VC17/.bin | head -40
+          # Only the DLL: the settings and profiles of the installed mod are left alone.
+          cp "$bin/ImprovedCameraSE.dll" "$out/"
+
+      - name: Upload the result
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImprovedCameraSE-FPI-fix
+          path: package/
