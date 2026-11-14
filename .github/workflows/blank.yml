@@ -31,9 +31,25 @@ jobs:
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      # The projects ask for Windows SDK 10.0.20348.0, which this runner does not have.
+      # Pick an installed one instead (22621 if present, otherwise the newest) and pass it to MSBuild.
+      - name: Pick an installed Windows SDK
+        shell: pwsh
+        run: |
+          $all = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Include" -Directory |
+                 Where-Object { $_.Name -match '^10\.0\.\d+\.0$' } |
+                 Sort-Object { [version]$_.Name } -Descending |
+                 ForEach-Object { $_.Name }
+          Write-Host "Installed SDKs: $($all -join ', ')"
+          $pick = $all | Where-Object { $_ -eq '10.0.22621.0' } | Select-Object -First 1
+          if (-not $pick) { $pick = $all | Select-Object -First 1 }
+          if (-not $pick) { throw "No Windows 10 SDK found on this runner" }
+          Write-Host "Using SDK $pick"
+          "SDK_VERSION=$pick" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build (Release, x64)
         shell: cmd
-        run: msbuild src\build\VC17\ImprovedCameraSE_VS2022.sln /p:Configuration=Release /p:Platform=x64 /m /nologo /verbosity:minimal
+        run: msbuild src\build\VC17\ImprovedCameraSE_VS2022.sln /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=%SDK_VERSION% /m /nologo /verbosity:minimal
 
       - name: Collect the files in the layout of the mod
         shell: bash
